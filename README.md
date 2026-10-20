@@ -4,6 +4,8 @@
 
 A Microsoft Access form that turns one week of entries from the `Failure_analysis` table into a weekly failure analysis report. You pick an ISO year and work week, check that week's events in Access, then export a formatted Excel workbook (or PDF) with charts and a list of scheduled and unscheduled maintenance.
 
+The form and its code are in the Access front end `trial-IBAD3_V3.3.1.accdb` in this repository. `Failure_analysis` and the shared review table are linked tables in the shared back end `IBAD3_V3_backend.accdb` on the IBAD-3 network share.
+
 ## The form
 
 | Control | What it does |
@@ -24,6 +26,8 @@ The form has no code module of its own. Each button's **On Click** property call
 | Export Excel report | `=FA_ExportClick()` | `GenerateFailureReport(year, week)` |
 | Export PDF report | `=FA_ExportPDFClick()` | `GenerateFailureReport(year, week, True)` |
 
+Without the form, run `OpenFailureWeekReviewPrompt` or `GenerateFailureReportPrompt` from the Immediate window (Ctrl+G). Each asks for the year and week in input boxes. `GenerateFailureReportPrompt` exports to Excel only.
+
 ### Scheduled vs. Unscheduled
 
 Events are classified automatically from the `Type of Maintenance` field, so nothing has to be classified by hand. The rules are checked in this order:
@@ -36,12 +40,14 @@ Events are classified automatically from the `Type of Maintenance` field, so not
 
 ### Shared review table
 
-Before doing anything else, both buttons sync the selected week into `tblFailureReportItemsShared`. This table sits in the shared Access back end next to `Failure_analysis`, so every copy of the front end sees the same report notes.
+Before doing anything else, the Review button and both export buttons sync the selected week into `tblFailureReportItemsShared`. This table sits in the shared Access back end next to `Failure_analysis`, so every copy of the front end sees the same report notes. In `trial-IBAD3_V3.3.1.accdb` it is already linked.
 
-- Each event in the week gets one row, keyed by event ID and tagged with the ISO year and work week.
+- Each event in the week gets one row, keyed by event ID (`FailureID`) and tagged with the ISO year and work week.
 - New rows get a pre-filled report note: `Chamber - Equipment: Error - Solution`.
 - If an event's resolved date has moved to another week, its year/week tag is updated.
-- If the table doesn't exist yet, it is created in the back end and linked into the front end.
+- If the table doesn't exist yet, it is created in the back end and linked into the front end. If the front end has a *local* table with this name, the sync stops with an error, because the notes would not be shared.
+- If an older local `tblFailureReportItems` table is found, its rows that are missing from the shared table are copied across. The local table is kept as a backup.
+- The table also has `IncludeInNotes` and `ScheduleClass` columns. `ScheduleClass` is left over from the manual-classification version. Neither column is used by the review list or the report.
 
 ## Review weekly events
 
@@ -53,7 +59,7 @@ Before doing anything else, both buttons sync the selected week into `tblFailure
 | Column | Editable? |
 |---|---|
 | Event ID, Resolved, Chamber, Equipment, Error, Solution | No |
-| Type of Maintenance | No. Change it on the `Failure_analysis` entry form. |
+| Type of Maintenance | No. Change it in the Type of Maintenance list on the `Failure_analysis` form. |
 | On report as (Scheduled / Unscheduled / Not listed) | No. It's calculated from the rules above. |
 | Report note | **Yes**. Saved straight to the shared back-end table. |
 
@@ -108,5 +114,17 @@ Works the same way as the Excel export, with three differences:
 
 ## Setup
 
-- **New front end:** import `modFailureAnalysisReport.bas`, then run `InstallFailureAnalysisForm` from the Immediate window (Ctrl+G). It creates the form and opens it.
-- **Upgrading from the manual-classification version:** replace the module with the new `.bas` file, then run `UpgradeFailureReportForms` once.
+`trial-IBAD3_V3.3.1.accdb` is already set up. It contains:
+- the module `modFailureAnalysisReport`
+- the form `frmFailureAnalysisWeekly`
+- the review list `frmFailureReviewRows`, in the current layout with Type of Maintenance and On report as
+- the query `qryFailureWeekReview`
+- links to `Failure_analysis` and `tblFailureReportItemsShared` in the shared back end
+
+Open `frmFailureAnalysisWeekly` to use it.
+
+The database also contains `frmFailureAnalysis`, an older copy of the form. Its buttons call the same functions, but its hint text still describes the manual classification and its work week box defaults to a fixed week (42). Use `frmFailureAnalysisWeekly` instead.
+
+To add the report to another front end:
+- **New front end:** in `trial-IBAD3_V3.3.1.accdb`, export `modFailureAnalysisReport` from the VBA editor (right-click the module > Export File). Import the `.bas` file into the other front end, then run `InstallFailureAnalysisForm` from the Immediate window (Ctrl+G). It creates the form and opens it.
+- **Upgrading from the manual-classification version:** replace that front end's module with the exported one, then run `UpgradeFailureReportForms` once.
